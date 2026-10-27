@@ -13,7 +13,7 @@ renderEasy=function(){const root=$('easy-questions');root.replaceChildren();(sim
 
 const SDK_URL='https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.133.0/+esm';
 const STORE='question-garden-claude';
-const DEFAULT_MODEL='claude-haiku-5-5';
+const DEFAULT_MODEL='claude-sonnet-5-5';
 let Anthropic=null;const sdk=()=>Anthropic?Promise.resolve(Anthropic):import(SDK_URL).then(m=>Anthropic=m.default);
 const load=()=>{try{return JSON.parse(localStorage.getItem(STORE))}catch{return null}};
 const store=v=>{try{v?localStorage.setItem(STORE,JSON.stringify(v)):localStorage.removeItem(STORE)}catch{}};
@@ -22,6 +22,8 @@ try{localStorage.removeItem('question-garden-gemini')}catch{}
 const cleanKey=k=>String(k||'').normalize('NFKC').replace(/[\s​-‍﻿]/g,'');
 const validKey=k=>/^sk-ant-[\x21-\x7e]{10,200}$/.test(k);
 let conf=load();if(conf&&!validKey(conf.key=cleanKey(conf.key))){conf=null;store(null)}
+// Haiku was the earlier default but could not follow up on earlier turns well; move saved settings that still use it.
+if(conf&&conf.model==='claude-haiku-5-5'){conf.model=DEFAULT_MODEL;store(conf)}
 
 const today=()=>new Date().toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'long',day:'numeric',weekday:'long'});
 // School-area weather comes straight from a forecast API (Open-Meteo, free, no key) for the school's coordinates,
@@ -57,7 +59,7 @@ ${weather||'학교 지역이 설정되지 않아 학교 주변 예보가 없습�
 - 학교 급식표, 학교 도서관 책 목록, 학교 행사 일정은 아직 연결되지 않았어요. 검색하거나 추측하지 말고 "선생님께 물어봐요"라고만 답하세요.
 - 학생 개인정보는 묻지 마세요.`;
 
-const settings=dialog('⚙️ 교사용 Claude 연결');settings.innerHTML='<div class="dialog-heading"><h2>⚙️ 교사용 Claude 연결</h2><button class="quiet" id="close-settings">닫기 ✕</button></div><p><b>Claude API 키</b>를 넣으면 이 브라우저가 Claude에 직접 질문을 보내요. Claude는 날씨나 분리배출처럼 최신 정보가 필요하면 스스로 웹을 검색하고 여러 곳을 비교해서 답해요.</p><p>키는 <b>이 기기의 브라우저에만</b> 저장돼요. ⚠️ 이 기기를 쓰는 사람은 개발자 도구로 키를 볼 수 있으니, Claude 콘솔에서 <b>월 사용 한도</b>를 꼭 걸어두세요. 학생 개인정보는 입력하지 마세요.</p><form id="api-form" autocomplete="off"><label for="api-key">Claude API 키</label><input id="api-key" type="password" required autocomplete="new-password" maxlength="300" placeholder="sk-ant-…  (Claude 콘솔에서 발급)"><label for="api-region">학교 지역</label><input id="api-region" maxlength="40" placeholder="예: 보령시 청소면"><label for="api-model">모델 이름</label><input id="api-model" required maxlength="80" value="'+DEFAULT_MODEL+'"><p>질문 하나에 보통 1원도 안 들고, 날씨처럼 검색하는 질문은 검색 횟수만큼(1번에 약 1센트) 더 들어요. 사용한 만큼 충전한 크레딧에서 빠져요.</p><button class="send" type="submit">키 확인하고 연결하기</button></form><button id="disconnect" class="quiet">연결 해제 · 시연 모드로 돌아가기</button><p id="api-status" role="status"></p>';
+const settings=dialog('⚙️ 교사용 Claude 연결');settings.innerHTML='<div class="dialog-heading"><h2>⚙️ 교사용 Claude 연결</h2><button class="quiet" id="close-settings">닫기 ✕</button></div><p><b>Claude API 키</b>를 넣으면 이 브라우저가 Claude에 직접 질문을 보내요. Claude는 날씨나 분리배출처럼 최신 정보가 필요하면 스스로 웹을 검색하고 여러 곳을 비교해서 답해요.</p><p>키는 <b>이 기기의 브라우저에만</b> 저장돼요. ⚠️ 이 기기를 쓰는 사람은 개발자 도구로 키를 볼 수 있으니, Claude 콘솔에서 <b>월 사용 한도</b>를 꼭 걸어두세요. 학생 개인정보는 입력하지 마세요.</p><form id="api-form" autocomplete="off"><label for="api-key">Claude API 키</label><input id="api-key" type="password" required autocomplete="new-password" maxlength="300" placeholder="sk-ant-…  (Claude 콘솔에서 발급)"><label for="api-region">학교 지역</label><input id="api-region" maxlength="40" placeholder="예: 보령시 청소면"><label for="api-model">모델 이름</label><input id="api-model" required maxlength="80" value="'+DEFAULT_MODEL+'"><p>질문 하나에 보통 10~20원 정도 들고, 날씨처럼 검색하는 질문은 검색 횟수만큼(1번에 약 1센트) 더 들어요. 사용한 만큼 충전한 크레딧에서 빠져요.</p><button class="send" type="submit">키 확인하고 연결하기</button></form><button id="disconnect" class="quiet">연결 해제 · 시연 모드로 돌아가기</button><p id="api-status" role="status"></p>';
 const settingsButton=document.createElement('button');settingsButton.className='quiet';settingsButton.textContent='⚙️ API 설정';document.querySelector('header').append(settingsButton);settingsButton.onclick=()=>settings.showModal();$('close-settings').onclick=()=>settings.close();let busy=false;
 
 // Every failure shows the HTTP status and the API's error body, or the browser's network error. One question = one request: no automatic retries.
@@ -76,7 +78,7 @@ const demoSubmit=$('chat-form').onsubmit;
 $('chat-form').onsubmit=async e=>{if(!conf)return demoSubmit(e);e.preventDefault();if(busy)return;const q=$('question').value.trim();if(!q)return;busy=true;const send=$('chat-form').querySelector('.send');send.disabled=true;send.textContent='답변 중…';addMessage(q,'user');$('question').value='';
 addMessage('생각하는 중…','bot');const bubble=$('messages').lastElementChild,label=bubble.querySelector('strong'),body=bubble.lastChild;label.textContent='Claude 답변 · 다른 자료에서 확인해요';
 const history=records.filter(r=>r.live).slice(-10).flatMap(r=>[{role:'user',content:r.question},{role:'assistant',content:r.answer}]);const messages=[...history,{role:'user',content:q}];
-try{await sdk();const api=client(conf.key);const weather=await weatherText();let final;for(let round=0;round<3;round++){let shown='';const stream=api.messages.stream({model:conf.model,max_tokens:8000,output_config:{effort:'medium'},system:system(weather),messages,tools:[{type:'web_search_20250305',name:'web_search',max_uses:3,user_location:{type:'approximate',country:'KR',timezone:'Asia/Seoul',...(conf.region?{city:conf.region}:{})}}]});
+try{await sdk();const api=client(conf.key);const weather=await weatherText();let final;for(let round=0;round<3;round++){let shown='';const fallback=conf.model==='claude-sonnet-5-5'?{betas:['server-side-fallback-2026-07-01'],fallbacks:'default'}:{};const stream=(fallback.betas?api.beta:api).messages.stream({...fallback,model:conf.model,max_tokens:8000,output_config:{effort:'medium'},system:system(weather),messages,tools:[{type:'web_search_20250305',name:'web_search',max_uses:3,user_location:{type:'approximate',country:'KR',timezone:'Asia/Seoul',...(conf.region?{city:conf.region}:{})}}]});
 stream.on('streamEvent',ev=>{if(ev.type==='content_block_start'&&ev.content_block.type==='server_tool_use'){shown='';body.textContent='🔎 웹에서 찾아보는 중…'}});stream.on('text',delta=>{shown+=delta;body.textContent=shown;$('messages').scrollTop=$('messages').scrollHeight});
 final=await stream.finalMessage();if(final.stop_reason!=='pause_turn')break;messages.push({role:'assistant',content:final.content})}
 const text=readAnswer(final.content);if(!text)throw Error(`Claude가 답변 글을 주지 않았어요 (종료 이유: ${final.stop_reason}).`);
