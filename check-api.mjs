@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';import fs from 'node:fs';import crypto from 'node:crypto';
+const code=fs.readFileSync('dist/server/index.js','utf8');const {default:worker}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));const env={API_SESSION_SECRET:crypto.randomBytes(32).toString('hex')};const origin='https://classroom.example';const headers={'origin':origin,'oai-authenticated-user-id':'teacher','content-type':'application/json'};
+const request=(path,method='GET',data,cookie)=>new Request(origin+path,{method,headers:{...headers,...(cookie?{cookie}:{})},...(data?{body:JSON.stringify(data)}:{})});
+assert.equal((await worker.fetch(new Request(origin+'/api/config'),env)).status,401);
+assert.equal((await worker.fetch(request('/api/config'),env)).status,200);
+const r=await worker.fetch(request('/api/config','POST',{url:'https://api.provider.com/v1/chat/completions',model:'test-model',key:'test-secret-key'}),env);assert.equal(r.status,200);const cookie=r.headers.get('set-cookie');assert(cookie.includes('HttpOnly'));assert(!cookie.includes('test-secret-key'));
+const c=await (await worker.fetch(request('/api/config','GET',null,cookie),env)).json();assert(c.connected);assert.equal(c.key,undefined);
+const oldFetch=globalThis.fetch;globalThis.fetch=async(u,init)=>{assert.equal(init.headers.authorization,'Bearer test-secret-key');return Response.json({choices:[{message:{content:'테스트 답변'}}]})};
+const chat=await worker.fetch(request('/api/chat','POST',{messages:[{role:'user',content:'안녕'}]},cookie),env);assert.equal((await chat.json()).answer,'테스트 답변');globalThis.fetch=oldFetch;
+assert.equal((await worker.fetch(request('/api/config','POST',{url:'http://localhost',model:'x',key:'x'}),env)).status,400);
+const bad=new Request(origin+'/api/config',{method:'DELETE',headers:{...headers,origin:'https://evil.example'}});assert.equal((await worker.fetch(bad,env)).status,403);
+const deleted=await worker.fetch(request('/api/config','DELETE'),env);assert(deleted.headers.get('set-cookie').includes('Max-Age=0'));
+console.log('PASS: login, origin, encrypted session, hidden key, mocked API response, invalid URL, disconnect. No paid requests made.');
