@@ -1,0 +1,11 @@
+from pathlib import Path
+p=Path('dist/index.html');s=p.read_text(encoding='utf-8').replace('<span>01</span>','<span aria-hidden="true">✿</span>')
+s=s.replace('<div id="questions" class="questions"></div>','<section class="easy"><h3>그림으로 쉽게 물어봐요</h3><div id="easy-questions"></div><small>그림을 누르면 질문창에 들어가요. 🔊 버튼으로 들을 수도 있어요.</small></section><div id="questions" class="questions"></div>')
+s=s.replace('<p id="judgment-status" role="status"></p></details>','<p id="judgment-status" role="status"></p></details><section id="result" class="result" hidden><span class="eyebrow">나의 생각을 모았어요</span><h2>🌼 오늘의 배움 기록</h2><p>대화와 내가 남긴 판단을 모은 기록이에요. AI가 만든 요약은 아니에요.</p><div id="summary"></div><button id="download-pdf" class="send">↓ PDF 정리 파일 받기</button><p id="pdf-status" role="status"></p></section>')
+s=s.replace('<script src="app.js"></script>','<script src="app.js"></script><script src="report.js"></script>');p.write_text(s,encoding='utf-8')
+p=Path('dist/app.js');s=p.read_text(encoding='utf-8').replace('우리 학교에서 우유팩은 어디에 버리나요?','우유팩은 어떻게 분리배출하나요?').replace('학교 수거함 위치는 선생님께 확인해요.','지역마다 수거 방법이 다를 수 있으니 안내의 지역과 날짜도 살펴봐요.')
+s=s.replace("let active='animals',animal='고양이';","let active='animals',animal='고양이';const records=[];let latest=-1;")
+s=s.replace("$('questions').append(b)})}","$('questions').append(b)});if(typeof renderEasy==='function')renderEasy()}")
+s=s.replace("addMessage(q,'user');addMessage(answer(q),'bot');","const response=answer(q);records.push({question:q,answer:response,judgment:'',reason:'',topic:topics[active].name});latest=records.length-1;addMessage(q,'user');addMessage(response,'bot');")
+s=s.replace("active='animals';animal='고양이';render()","records.length=0;latest=-1;if($('result'))$('result').hidden=true;active='animals';animal='고양이';render()")
+p.write_text(s,encoding='utf-8')
