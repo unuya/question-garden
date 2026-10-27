@@ -34,17 +34,20 @@ if(!weatherCache||Date.now()-weatherCache.at>30*60000){const {lat,lon}=conf.geo;
 const day=i=>{const t=new Date(d.daily.time[i]+'T12:00:00+09:00').toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul',month:'long',day:'numeric',weekday:'short'});return `${['오늘','내일','모레'][i]}(${t}): ${WMO[d.daily.weather_code[i]]??'알 수 없음'}, 최저 ${Math.round(d.daily.temperature_2m_min[i])}도 / 최고 ${Math.round(d.daily.temperature_2m_max[i])}도, 비 올 확률 ${d.daily.precipitation_probability_max[i]??'?'}%${d.daily.precipitation_sum[i]>0?`, 강수량 ${d.daily.precipitation_sum[i]}mm`:''}`};
 weatherCache={at:Date.now(),text:`학교 주변(${conf.geo.place}) 날씨 예보 — ${d.current.time.replace('T',' ')} 기준:\n- 지금: ${Math.round(d.current.temperature_2m)}도, ${WMO[d.current.weather_code]??'알 수 없음'}\n- ${[0,1,2].map(day).join('\n- ')}`}}return weatherCache.text}catch(e){return `학교 주변 날씨: 예보를 불러오지 못했습니다 (${e.message}).`}}
 
-const system=weather=>`당신은 초등학생의 질문에 답하는 챗봇입니다.
+const system=weather=>`당신은 초등학생과 대화하는 다정한 챗봇 친구입니다.
 오늘은 ${today()}입니다.${conf.region?` 학교는 ${conf.region}에 있습니다.`:''}
 
-답하는 방식:
-- 1~2문장으로 짧고 분명하게 답하세요. 인사, "찾아볼게요" 같은 말, "확인해 보세요" 같은 덧붙임 없이 답만 말하세요.
-- 확인한 사실은 "~예요/~해요"로 단정해서 말하세요. "아마", "~일 수도 있어요" 같은 흐린 표현은 쓰지 마세요.
+대화하는 방식:
+- 앞에서 나눈 대화를 기억하고 이어서 답하세요. "그럼 강아지는?", "왜?", "그거 더 알려줘"처럼 짧은 말은 바로 앞에서 이야기하던 주제에 대한 질문이에요. 앞 내용을 이어받아 답하세요.
+- 학생 말에 먼저 짧게 반응한 뒤 답하세요. 예: "좋은 질문이에요!", "맞아요, 그래서…"처럼 자연스럽게요. 매번 똑같은 말로 시작하지는 마세요.
+- 2~3문장으로 짧게 답하세요. 학생이 더 이야기하고 싶어 할 만하면, 가끔 마지막에 짧은 질문을 하나 던져 대화를 이어가세요. 예: "고양이 말고 다른 동물도 궁금해요?"
+- "찾아볼게요" 같은 말이나 "다른 자료에서 확인해 보세요" 같은 덧붙임은 하지 마세요.
+- 확인한 사실은 "~예요/~해요"로 분명하게 말하세요. "아마", "~일 수도 있어요" 같은 흐린 표현은 쓰지 마세요.
 - 근거가 없는 내용(특히 숫자)은 절대 지어내지 마세요.
 
 날씨 질문:
 - 날씨를 물으면 지역을 따로 말하지 않는 한 학교 주변 날씨만 답하세요. 아래 예보만 보고 답하고, 날씨는 검색하지 마세요.
-- 묻는 날(오늘/내일/모레)의 날씨, 최저·최고 기온, 비 여부(우산 필요 여부)를 한두 문장으로 말하세요. 예: "오늘 학교 주변은 맑고 5~12도예요. 비 소식이 없어서 우산은 필요 없어요."
+- 묻는 날(오늘/내일/모레)의 날씨, 최저·최고 기온, 비 여부(우산 필요 여부)를 짧게 말하세요. 예: "오늘 학교 주변은 맑고 5~12도예요. 비 소식이 없어서 우산은 필요 없어요."
 - 비 올 확률이 50% 이상이면 우산을 챙기라고 하세요.
 ${weather||'학교 지역이 설정되지 않아 학교 주변 예보가 없습니다. 날씨를 물으면 선생님께 학교 지역 설정을 부탁하라고 답하세요.'}
 
@@ -72,8 +75,8 @@ function readAnswer(content){let last=-1;content.forEach((b,i)=>{if(/^web_(searc
 const demoSubmit=$('chat-form').onsubmit;
 $('chat-form').onsubmit=async e=>{if(!conf)return demoSubmit(e);e.preventDefault();if(busy)return;const q=$('question').value.trim();if(!q)return;busy=true;const send=$('chat-form').querySelector('.send');send.disabled=true;send.textContent='답변 중…';addMessage(q,'user');$('question').value='';
 addMessage('생각하는 중…','bot');const bubble=$('messages').lastElementChild,label=bubble.querySelector('strong'),body=bubble.lastChild;label.textContent='Claude 답변 · 다른 자료에서 확인해요';
-const history=records.filter(r=>r.live).slice(-6).flatMap(r=>[{role:'user',content:r.question},{role:'assistant',content:r.answer}]);const messages=[...history,{role:'user',content:q}];
-try{await sdk();const api=client(conf.key);const weather=await weatherText();let final;for(let round=0;round<3;round++){let shown='';const stream=api.messages.stream({model:conf.model,max_tokens:8000,output_config:{effort:'low'},system:system(weather),messages,tools:[{type:'web_search_20250305',name:'web_search',max_uses:3,user_location:{type:'approximate',country:'KR',timezone:'Asia/Seoul',...(conf.region?{city:conf.region}:{})}}]});
+const history=records.filter(r=>r.live).slice(-10).flatMap(r=>[{role:'user',content:r.question},{role:'assistant',content:r.answer}]);const messages=[...history,{role:'user',content:q}];
+try{await sdk();const api=client(conf.key);const weather=await weatherText();let final;for(let round=0;round<3;round++){let shown='';const stream=api.messages.stream({model:conf.model,max_tokens:8000,output_config:{effort:'medium'},system:system(weather),messages,tools:[{type:'web_search_20250305',name:'web_search',max_uses:3,user_location:{type:'approximate',country:'KR',timezone:'Asia/Seoul',...(conf.region?{city:conf.region}:{})}}]});
 stream.on('streamEvent',ev=>{if(ev.type==='content_block_start'&&ev.content_block.type==='server_tool_use'){shown='';body.textContent='🔎 웹에서 찾아보는 중…'}});stream.on('text',delta=>{shown+=delta;body.textContent=shown;$('messages').scrollTop=$('messages').scrollHeight});
 final=await stream.finalMessage();if(final.stop_reason!=='pause_turn')break;messages.push({role:'assistant',content:final.content})}
 const text=readAnswer(final.content);if(!text)throw Error(`Claude가 답변 글을 주지 않았어요 (종료 이유: ${final.stop_reason}).`);
