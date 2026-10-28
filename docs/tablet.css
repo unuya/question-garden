@@ -2,3 +2,7 @@ html,body{height:100%;overflow:hidden}body{height:var(--app-height,100dvh);paddi
 .messages:has(.message) .welcome{display:none}
 .activity-dialog #api-form{display:grid;gap:9px}.activity-dialog #api-form input{font:inherit;padding:12px;border:1px solid #d9c7e5;border-radius:12px;width:100%;box-sizing:border-box}.activity-dialog p{line-height:1.7;font-size:13px}.activity-dialog #api-form .send{width:100%;margin:6px 0 15px}#api-status{white-space:pre-wrap}header .quiet{flex-shrink:0}@media(max-width:600px){header .demo{display:none}header .brand{margin-right:auto}header .quiet{margin-left:0}}
 .message .sources{display:flex;flex-direction:column;gap:4px;margin-top:10px;padding-top:8px;border-top:1px dashed #d9c7e5;font-size:12px;white-space:normal}.message .sources b{font-size:11px;color:#8a64a9}.message .sources a{color:#6e5289;text-decoration:underline;overflow-wrap:anywhere}
+body{position:fixed;left:0;right:0;top:var(--app-top,0px)}
+.keyboard header,.keyboard aside,.keyboard .chat-tools,.keyboard .chat-heading,.keyboard footer,.keyboard #chat-form>label{display:none}
+.keyboard main{padding-top:6px;gap:0}.keyboard .panel{padding-top:8px;padding-bottom:8px}.keyboard .messages{padding:6px 0}.keyboard .welcome{padding:8px;font-size:15px}.keyboard #chat-form{padding-top:6px}
+.keyboard .activity-dialog{margin:calc(var(--app-top,0px) + 10px) auto auto;max-height:calc(var(--app-height,100dvh) - 20px)}

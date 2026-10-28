@@ -26,18 +26,20 @@ let conf=load();if(conf&&!validKey(conf.key=cleanKey(conf.key))){conf=null;store
 if(conf&&conf.model==='claude-haiku-5-5'){conf.model=DEFAULT_MODEL;store(conf)}
 
 const today=()=>new Date().toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'long',day:'numeric',weekday:'long'});
+// A slow forecast must not hold up the answer: requests give up after a few seconds and the answer goes ahead without weather.
 // School-area weather comes straight from a forecast API (Open-Meteo, free, no key) for the school's coordinates,
 // because web search could not reliably read forecasts for a small area such as a 면.
 const WMO={0:'맑음',1:'대체로 맑음',2:'구름 조금',3:'흐림',45:'안개',48:'안개',51:'약한 이슬비',53:'이슬비',55:'강한 이슬비',56:'어는 이슬비',57:'어는 이슬비',61:'약한 비',63:'비',65:'강한 비',66:'어는 비',67:'어는 비',71:'약한 눈',73:'눈',75:'많은 눈',77:'싸락눈',80:'소나기',81:'소나기',82:'강한 소나기',85:'눈 소나기',86:'강한 눈 소나기',95:'뇌우',96:'우박 동반 뇌우',99:'우박 동반 뇌우'};
-async function geocode(region){const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=kr&accept-language=ko&q='+encodeURIComponent(region));const [hit]=await r.json();if(!hit)return null;return {lat:+hit.lat,lon:+hit.lon,place:hit.display_name.split(',').slice(0,2).map(x=>x.trim()).join(', ')}}
+async function geocode(region){const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=kr&accept-language=ko&q='+encodeURIComponent(region),{signal:AbortSignal.timeout(5000)});const [hit]=await r.json();if(!hit)return null;return {lat:+hit.lat,lon:+hit.lon,place:hit.display_name.split(',').slice(0,2).map(x=>x.trim()).join(', ')}}
 let weatherCache=null;
 async function weatherText(){if(!conf.region)return '';try{if(!conf.geo){conf.geo=await geocode(conf.region);store(conf)}if(!conf.geo)return `학교 주변 날씨: "${conf.region}"의 위치를 찾지 못해 예보가 없습니다.`;
-if(!weatherCache||Date.now()-weatherCache.at>30*60000){const {lat,lon}=conf.geo;const d=await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum&timezone=Asia%2FSeoul&forecast_days=3`)).json();
+if(!weatherCache||Date.now()-weatherCache.at>30*60000){const {lat,lon}=conf.geo;const d=await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum&timezone=Asia%2FSeoul&forecast_days=3`,{signal:AbortSignal.timeout(3000)})).json();
 const day=i=>{const t=new Date(d.daily.time[i]+'T12:00:00+09:00').toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul',month:'long',day:'numeric',weekday:'short'});return `${['오늘','내일','모레'][i]}(${t}): ${WMO[d.daily.weather_code[i]]??'알 수 없음'}, 최저 ${Math.round(d.daily.temperature_2m_min[i])}도 / 최고 ${Math.round(d.daily.temperature_2m_max[i])}도, 비 올 확률 ${d.daily.precipitation_probability_max[i]??'?'}%${d.daily.precipitation_sum[i]>0?`, 강수량 ${d.daily.precipitation_sum[i]}mm`:''}`};
-weatherCache={at:Date.now(),text:`학교 주변(${conf.geo.place}) 날씨 예보 — ${d.current.time.replace('T',' ')} 기준:\n- 지금: ${Math.round(d.current.temperature_2m)}도, ${WMO[d.current.weather_code]??'알 수 없음'}\n- ${[0,1,2].map(day).join('\n- ')}`}}return weatherCache.text}catch(e){return `학교 주변 날씨: 예보를 불러오지 못했습니다 (${e.message}).`}}
+weatherCache={at:Date.now(),text:`학교 주변(${conf.geo.place}) 날씨 예보 — ${d.current.time.replace('T',' ')} 기준:\n- 지금: ${Math.round(d.current.temperature_2m)}도, ${WMO[d.current.weather_code]??'알 수 없음'}\n- ${[0,1,2].map(day).join('\n- ')}`}}return weatherCache.text}catch(e){/* retry in 5 minutes, not on every question */weatherCache={at:Date.now()-25*60000,text:`학교 주변 날씨: 예보를 불러오지 못했습니다 (${e.message}).`};return weatherCache.text}}
 
-const system=weather=>`당신은 초등학생과 대화하는 다정한 챗봇 친구입니다.
-오늘은 ${today()}입니다.${conf.region?` 학교는 ${conf.region}에 있습니다.`:''}
+// The system prompt is two blocks: a fixed one (rules + school calendar + menu) that Claude caches between questions,
+// and a small per-question one (date, weather, matching library books) after the cache breakpoint.
+const fixedSystem=()=>`당신은 ${SCHOOL.name} 학생과 대화하는 다정한 챗봇 친구입니다.${conf.region?` 학교는 ${conf.region}에 있습니다.`:''}
 
 대화하는 방식:
 - 앞에서 나눈 대화를 기억하고 이어서 답하세요. "그럼 강아지는?", "왜?", "그거 더 알려줘"처럼 짧은 말은 바로 앞에서 이야기하던 주제에 대한 질문이에요. 앞 내용을 이어받아 답하세요.
@@ -48,16 +50,29 @@ const system=weather=>`당신은 초등학생과 대화하는 다정한 챗봇 �
 - 근거가 없는 내용(특히 숫자)은 절대 지어내지 마세요.
 
 날씨 질문:
-- 날씨를 물으면 지역을 따로 말하지 않는 한 학교 주변 날씨만 답하세요. 아래 예보만 보고 답하고, 날씨는 검색하지 마세요.
+- 날씨를 물으면 지역을 따로 말하지 않는 한 학교 주변 날씨만 답하세요. 맨 아래 예보만 보고 답하고, 날씨는 검색하지 마세요.
 - 묻는 날(오늘/내일/모레)의 날씨, 최저·최고 기온, 비 여부(우산 필요 여부)를 짧게 말하세요. 예: "오늘 학교 주변은 맑고 5~12도예요. 비 소식이 없어서 우산은 필요 없어요."
 - 비 올 확률이 50% 이상이면 우산을 챙기라고 하세요.
-${weather||'학교 지역이 설정되지 않아 학교 주변 예보가 없습니다. 날씨를 물으면 선생님께 학교 지역 설정을 부탁하라고 답하세요.'}
+
+급식·학교 행사·도서관 질문:
+- 아래 학사 달력, 급식 식단표와 맨 아래 도서관 검색 결과만 보고 바로 답하세요. 이런 질문은 절대 검색하지 마세요.
+- 급식은 메뉴 이름만 쉽게 말하고, 괄호 속 알레르기 번호는 학생이 알레르기를 물을 때만 음식 이름으로 바꿔 알려 주세요. 어려운 메뉴 이름은 어떤 음식인지 짧게 풀어 주세요.
+- "다음 행사", "이번 주"처럼 물으면 오늘 날짜를 기준으로 계산하세요. 지난 일정은 지났다고 말하세요.
+- 자료에 없는 날짜의 급식이나 목록에 없는 책은 지어내지 말고 "아직 자료에 없어요. 선생님께 물어봐요"라고 답하세요.
+- 책은 제목과 지은이를 말하고, 대출중·분실인 책은 그렇다고 알려 주세요. 청구기호는 학생이 책 위치를 물을 때만 말하세요.
 
 그 밖의 질문:
 - 분리배출, 최근 소식처럼 지역·최신 정보가 필요하면 검색해서 확인한 뒤 답하세요.
 - 동물·과학처럼 이미 알려진 지식은 검색하지 말고 바로 답하세요.
-- 학교 급식표, 학교 도서관 책 목록, 학교 행사 일정은 아직 연결되지 않았어요. 검색하거나 추측하지 말고 "선생님께 물어봐요"라고만 답하세요.
-- 학생 개인정보는 묻지 마세요.`;
+- 학생 개인정보는 묻지 마세요.
+
+${CALENDAR}
+
+${menuText()}`;
+const seoulKey=(offset=0)=>new Date(Date.now()+offset*864e5).toLocaleDateString('sv-SE',{timeZone:'Asia/Seoul'});
+const questionSystem=(weather,library)=>`오늘은 ${today()}입니다. 오늘 급식: ${MENU[seoulKey()]||'식단표에 없음'} / 내일 급식: ${MENU[seoulKey(1)]||'식단표에 없음'}
+
+${weather||'학교 지역이 설정되지 않아 학교 주변 예보가 없습니다. 날씨를 물으면 선생님께 학교 지역 설정을 부탁하라고 답하세요.'}${library?'\n\n'+library:''}`;
 
 const settings=dialog('⚙️ 교사용 Claude 연결');settings.innerHTML='<div class="dialog-heading"><h2>⚙️ 교사용 Claude 연결</h2><button class="quiet" id="close-settings">닫기 ✕</button></div><p><b>Claude API 키</b>를 넣으면 이 브라우저가 Claude에 직접 질문을 보내요. Claude는 날씨나 분리배출처럼 최신 정보가 필요하면 스스로 웹을 검색하고 여러 곳을 비교해서 답해요.</p><p>키는 <b>이 기기의 브라우저에만</b> 저장돼요. ⚠️ 이 기기를 쓰는 사람은 개발자 도구로 키를 볼 수 있으니, Claude 콘솔에서 <b>월 사용 한도</b>를 꼭 걸어두세요. 학생 개인정보는 입력하지 마세요.</p><form id="api-form" autocomplete="off"><label for="api-key">Claude API 키</label><input id="api-key" type="password" required autocomplete="new-password" maxlength="300" placeholder="sk-ant-…  (Claude 콘솔에서 발급)"><label for="api-region">학교 지역</label><input id="api-region" maxlength="40" placeholder="예: 보령시 청소면"><label for="api-model">모델 이름</label><input id="api-model" required maxlength="80" value="'+DEFAULT_MODEL+'"><p>질문 하나에 보통 10~20원 정도 들고, 날씨처럼 검색하는 질문은 검색 횟수만큼(1번에 약 1센트) 더 들어요. 사용한 만큼 충전한 크레딧에서 빠져요.</p><button class="send" type="submit">키 확인하고 연결하기</button></form><button id="disconnect" class="quiet">연결 해제 · 시연 모드로 돌아가기</button><p id="api-status" role="status"></p>';
 const settingsButton=document.createElement('button');settingsButton.className='quiet';settingsButton.textContent='⚙️ API 설정';document.querySelector('header').append(settingsButton);settingsButton.onclick=()=>settings.showModal();$('close-settings').onclick=()=>settings.close();let busy=false;
@@ -78,7 +93,8 @@ const demoSubmit=$('chat-form').onsubmit;
 $('chat-form').onsubmit=async e=>{if(!conf)return demoSubmit(e);e.preventDefault();if(busy)return;const q=$('question').value.trim();if(!q)return;busy=true;const send=$('chat-form').querySelector('.send');send.disabled=true;send.textContent='답변 중…';addMessage(q,'user');$('question').value='';
 addMessage('생각하는 중…','bot');const bubble=$('messages').lastElementChild,label=bubble.querySelector('strong'),body=bubble.lastChild;label.textContent='Claude 답변 · 다른 자료에서 확인해요';
 const history=records.filter(r=>r.live).slice(-10).flatMap(r=>[{role:'user',content:r.question},{role:'assistant',content:r.answer}]);const messages=[...history,{role:'user',content:q}];
-try{await sdk();const api=client(conf.key);const weather=await weatherText();let final;for(let round=0;round<3;round++){let shown='';const fallback=conf.model==='claude-sonnet-5-5'?{betas:['server-side-fallback-2026-07-01'],fallbacks:'default'}:{};const stream=(fallback.betas?api.beta:api).messages.stream({...fallback,model:conf.model,max_tokens:8000,output_config:{effort:'medium'},system:system(weather),messages,tools:[{type:'web_search_20250305',name:'web_search',max_uses:3,user_location:{type:'approximate',country:'KR',timezone:'Asia/Seoul',...(conf.region?{city:conf.region}:{})}}]});
+const previous=records.filter(r=>r.live).slice(-1).map(r=>r.question).join(" ");
+try{const [,weather,library]=await Promise.all([sdk(),weatherText(),libraryText(q,previous,active)]);const api=client(conf.key);let final;for(let round=0;round<3;round++){let shown='';const fallback=conf.model==='claude-sonnet-5-5'?{betas:['server-side-fallback-2026-07-01'],fallbacks:'default'}:{};const stream=(fallback.betas?api.beta:api).messages.stream({...fallback,model:conf.model,max_tokens:8000,output_config:{effort:'low'},system:[{type:'text',text:fixedSystem(),cache_control:{type:'ephemeral'}},{type:'text',text:questionSystem(weather,library)}],messages,tools:[{type:'web_search_20250305',name:'web_search',max_uses:3,user_location:{type:'approximate',country:'KR',timezone:'Asia/Seoul',...(conf.region?{city:conf.region}:{})}}]});
 stream.on('streamEvent',ev=>{if(ev.type==='content_block_start'&&ev.content_block.type==='server_tool_use'){shown='';body.textContent='🔎 웹에서 찾아보는 중…'}});stream.on('text',delta=>{shown+=delta;body.textContent=shown;$('messages').scrollTop=$('messages').scrollHeight});
 final=await stream.finalMessage();if(final.stop_reason!=='pause_turn')break;messages.push({role:'assistant',content:final.content})}
 const text=readAnswer(final.content);if(!text)throw Error(`Claude가 답변 글을 주지 않았어요 (종료 이유: ${final.stop_reason}).`);
@@ -86,3 +102,7 @@ records.push({question:q,answer:text.slice(0,10000),judgment:'',reason:'',topic:
 catch(err){label.textContent='연결 오류 · AI 답변 아님';body.textContent=explain(err,conf.key)+'\n설정을 확인하거나 시연 모드로 돌아가 주세요.';$('question').value=q}
 finally{busy=false;send.disabled=false;send.textContent='질문 보내기 ↗'}};
 reportRows=function(){return records.map((r,i)=>({title:`${i+1}. ${r.question}`,body:[`${r.live?'Claude 답변':'시연 답변'}: ${r.answer.replace(/\n\n[\s\S]*/,'')}`,`내 판단: ${r.judgment||'아직 남기지 않았어요.'}`,`확인 자료와 근거: ${r.reason||'기록하지 않았어요.'}`]}))};
+
+// Warm up before the first question: load the SDK and the forecast now, and the library list once the student starts typing.
+const warm=()=>{if(!conf)return;sdk().catch(()=>{});weatherText().catch(()=>{})};warm();
+$('question').addEventListener('focus',()=>{warm();if(conf)loadBooks().catch(()=>{})},{once:true});

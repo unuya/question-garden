@@ -16,5 +16,11 @@ document.querySelector('.welcome').innerHTML='어떤 것이 궁금한가요? �
 document.querySelector('.chat-heading span').textContent='질문 → 찾아보기 → 내 판단';
 $('question').rows=1;
 const oldReset=$('reset').onclick;$('reset').onclick=()=>{oldReset();};
-function fitViewport(){document.documentElement.style.setProperty('--app-height',(window.visualViewport?.height||window.innerHeight)+'px')}
-window.visualViewport?.addEventListener('resize',fitViewport);window.addEventListener('resize',fitViewport);fitViewport();
+// iPad Safari does not shrink the page when the on-screen keyboard opens: it scrolls the page up under a smaller visual viewport.
+// So the app follows the visual viewport (height and offset), and while the keyboard is up it hides everything except the chat and the input.
+const root=document.documentElement;
+function fitViewport(){const vv=window.visualViewport,h=vv?.height||window.innerHeight,top=vv?.offsetTop||0;root.style.setProperty('--app-height',h+'px');root.style.setProperty('--app-top',top+'px');
+const typing=window.innerHeight-h>120&&document.activeElement?.matches?.('textarea,input:not([type=radio])');root.classList.toggle('keyboard',!!typing);if(typing){const m=$('messages');m.scrollTop=m.scrollHeight}}
+window.visualViewport?.addEventListener('resize',fitViewport);window.visualViewport?.addEventListener('scroll',fitViewport);window.addEventListener('resize',fitViewport);
+document.addEventListener('focusin',()=>setTimeout(fitViewport,50));document.addEventListener('focusout',()=>setTimeout(fitViewport,50));fitViewport();
+
